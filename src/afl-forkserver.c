@@ -74,7 +74,6 @@ static void fsrv_exec_child(afl_forkserver_t *fsrv, char **argv) {
 /* Initializes the struct */
 
 void afl_fsrv_init(afl_forkserver_t *fsrv) {
-
 #ifdef __linux__
   fsrv->nyx_handlers = NULL;
   fsrv->out_dir_path = NULL;
@@ -92,7 +91,7 @@ void afl_fsrv_init(afl_forkserver_t *fsrv) {
   fsrv->out_dir_fd = -1;
   fsrv->dev_null_fd = -1;
   fsrv->dev_urandom_fd = -1;
-
+  fsrv->NumOfFiles = 0;
   /* Settings */
   fsrv->use_stdin = true;
   fsrv->no_unlink = false;
@@ -131,6 +130,7 @@ void afl_fsrv_init_dup(afl_forkserver_t *fsrv_to, afl_forkserver_t *from) {
   fsrv_to->out_file = from->out_file;
   fsrv_to->dev_urandom_fd = from->dev_urandom_fd;
   fsrv_to->out_fd = from->out_fd;  // not sure this is a good idea
+  fsrv_to->out_fd_multi = from->out_fd_multi;
   fsrv_to->no_unlink = from->no_unlink;
   fsrv_to->uses_crash_exitcode = from->uses_crash_exitcode;
   fsrv_to->crash_exitcode = from->crash_exitcode;
@@ -658,6 +658,12 @@ void afl_fsrv_start(afl_forkserver_t *fsrv, char **argv,
     } else {
 
       dup2(fsrv->out_fd, 0);
+      int NumFiles = fsrv->NumOfFiles;
+      // Close the remnant file descriptors
+      while(NumFiles--)
+      {
+        close(fsrv->out_fd_multi[NumFiles]);
+      }
       close(fsrv->out_fd);
 
     }
@@ -1277,6 +1283,63 @@ u32 afl_fsrv_get_mapsize(afl_forkserver_t *fsrv, char **argv,
 
 }
 
+char** afl_fsrv_break_input(afl_forkserver_t *fsrv, char* str, int PartCount, int lens[PartCount])
+{
+  int str_size = strlen(str);
+  int part_size = 0;
+  char** RetVal = (char**)malloc( (PartCount)*sizeof(char*));
+  // Check if string can be divided in
+  // n equal parts. If not we just duplicate same data across three char*'s
+  // Calculate the size of parts to
+  // find the division points
+
+  part_size = str_size / PartCount;
+  if (part_size == 0)
+    part_size = str_size;
+
+  for (int i = 0 ;i < PartCount;i++)
+    lens[i] = 0;
+  int PartCounter = 0;
+  for (int i = 0; i < str_size; i++) {
+    if (i % part_size == 0)
+    {
+      RetVal[PartCounter] = (char*)malloc(part_size*sizeof(char));
+      lens[PartCounter] = part_size;
+      (fsrv->IpLenArray)[PartCounter] = part_size;
+      PartCounter = PartCounter + 1;
+    }
+    RetVal[PartCounter-1][i % part_size ] = str[i];
+  }
+  return RetVal;
+}
+void ck_write_multi(s32* _fds, u8** bufs, s32 len, const s32* lens, u8** fns, s32 num) {
+    if (len <= 0)
+      return;
+    /* Repeat this block n times */
+    for (int FileCount = 0; FileCount < num; FileCount++) {
+      s32 _written = 0, _off = 0, _len = (s32)(lens[FileCount]);
+      do {
+        s32 _res = write(_fds[FileCount], (bufs)[FileCount] + _off, _len);
+        if (_res != _len && (_res > 0 && _written + _res != _len)) {
+          if (_res > 0) {
+            _written += _res;
+            _len -= _res;
+            _off += _res;
+          } else {
+            //RPFATAL(_res, "Short write to %s, fd %d (%d of %d bytes)",
+            //      fns[FileCount], _fds[FileCount], _res, _len);
+            assert(false);
+          }
+        } else {
+          break;
+        }
+      } while (1);
+    }
+
+//    while(num--)
+//      free(bufs[num]);
+}
+
 /* Delete the current testcase and write the buf to the testcase file */
 
 void __attribute__((hot))
@@ -1345,7 +1408,7 @@ afl_fsrv_write_to_testcase(afl_forkserver_t *fsrv, u8 *buf, size_t len) {
   } else {
 
     s32 fd = fsrv->out_fd;
-
+    s32* fds = fsrv->out_fd_multi;
     if (!fsrv->use_stdin && fsrv->out_file) {
 
       if (unlikely(fsrv->no_unlink)) {
@@ -1354,14 +1417,37 @@ afl_fsrv_write_to_testcase(afl_forkserver_t *fsrv, u8 *buf, size_t len) {
                   DEFAULT_PERMISSION);
 
       } else {
-
-        unlink(fsrv->out_file);                           /* Ignore errors. */
-        fd = open(fsrv->out_file, O_WRONLY | O_CREAT | O_EXCL,
-                  DEFAULT_PERMISSION);
-
+        /*
+         * if (afl->fsrv.NumOfFiles) is NonZero, it means that -b option has been specified.
+         * Hence we open all files in the list
+         */
+        int NumOfFiles = fsrv->NumOfFiles;
+        if (fsrv->isMultiInput) {
+          while (NumOfFiles--) {
+            unlink((fsrv->multi_out_file)[NumOfFiles]);
+            fds[NumOfFiles] = open((fsrv->multi_out_file)[NumOfFiles],
+                      O_WRONLY | O_CREAT | O_EXCL, DEFAULT_PERMISSION);
+          }
+        }
+        else
+        {
+          unlink(fsrv->out_file);                           /* Ignore errors. */
+          fd = open(fsrv->out_file, O_WRONLY | O_CREAT | O_EXCL,
+                    DEFAULT_PERMISSION);
+        }
       }
 
-      if (fd < 0) { PFATAL("Unable to create '%s'", fsrv->out_file); }
+      if (fsrv->isMultiInput)
+      {
+        int NumOfFiles = fsrv->NumOfFiles;
+        while (NumOfFiles--) {
+          if (fds[NumOfFiles] < 0) { PFATAL("Unable to create '%s'",(fsrv->multi_out_file)[NumOfFiles]); }
+        }
+      }
+      else
+      {
+        if (fd < 0) { PFATAL("Unable to create '%s'", fsrv->out_file); }
+      }
 
     } else if (unlikely(fd <= 0)) {
 
@@ -1378,7 +1464,24 @@ afl_fsrv_write_to_testcase(afl_forkserver_t *fsrv, u8 *buf, size_t len) {
     }
 
     // fprintf(stderr, "WRITE %d %u\n", fd, len);
-    ck_write(fd, buf, len, fsrv->out_file);
+    /*
+     * Now all we gon do is take the input and split it into (write into) "b" number of files
+     */
+
+    int NumOfIps = fsrv->NumOfFiles;
+    if (NumOfIps>1)
+    {
+      int lens[NumOfIps];
+      fsrv->IpLenArray = (int*)calloc(0, NumOfIps*sizeof(int));
+      char** ListOfBufs;
+      /*
+       * buf is empty here, you read from the files and write into into listOfBufs
+       */
+      ListOfBufs = afl_fsrv_break_input(fsrv, buf, NumOfIps, lens);
+      ck_write_multi(fds, ListOfBufs, len, lens, fsrv->multi_out_file,NumOfIps);
+    }
+    else
+      ck_write(fd, buf, len, fsrv->out_file);
 
     if (fsrv->use_stdin) {
 
@@ -1386,8 +1489,15 @@ afl_fsrv_write_to_testcase(afl_forkserver_t *fsrv, u8 *buf, size_t len) {
       lseek(fd, 0, SEEK_SET);
 
     } else {
-
-      close(fd);
+      if (fsrv->isMultiInput)
+      {
+        int NumOfFiles = fsrv->NumOfFiles;
+        while (NumOfFiles--) {
+          close(fds[NumOfFiles]);
+        }
+      }
+      else
+        close(fd);
 
     }
 

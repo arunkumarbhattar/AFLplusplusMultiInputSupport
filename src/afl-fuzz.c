@@ -545,7 +545,7 @@ int main(int argc, char **argv_orig, char **envp) {
   while (
       (opt = getopt(
            argc, argv,
-           "+Ab:B:c:CdDe:E:hi:I:f:F:g:G:l:L:m:M:nNOo:p:RQs:S:t:T:UV:WXx:YZ")) >
+           "+Ab:B:c:CdDe:E:hi:I:f:F:g:G:k:l:L:m:M:nNOo:p:RQs:S:t:T:UV:WXx:YZ")) >
       0) {
 
     switch (opt) {
@@ -597,6 +597,13 @@ int main(int argc, char **argv_orig, char **envp) {
 
       }
 
+      case 'k': {
+        afl->fsrv.isMultiInput = true;
+        if (sscanf(optarg, "%d", &afl->NumberOfFiles) < 0) {
+          FATAL("Bad syntax used for -b");
+        }
+        break;
+      }
       case 'p':                                           /* Power schedule */
 
         if (!stricmp(optarg, "fast")) {
@@ -794,6 +801,36 @@ int main(int argc, char **argv_orig, char **envp) {
         if (afl->fsrv.out_file) { FATAL("Multiple -f options not supported"); }
 
         afl->fsrv.out_file = ck_strdup(optarg);
+        /*
+         * Generate -b number of additional file inputs and store it into the
+         * multi_out_file
+         *
+         */
+
+        // Initializing Multi File --> File Descriptor
+        int MultiFileCount = afl->NumberOfFiles;
+        if (afl->fsrv.isMultiInput) {
+          afl->fsrv.out_fd_multi = (s32 *)malloc(MultiFileCount * sizeof(s32));
+          while (MultiFileCount--) {
+            afl->fsrv.out_fd_multi[MultiFileCount] = -1;
+          }
+        }
+        afl->fsrv.NumOfFiles = afl->NumberOfFiles;
+        afl->fsrv.multi_out_file = (char*)malloc((afl->NumberOfFiles)*sizeof(char*));
+        int outFileLen = strlen(afl->fsrv.out_file);
+        //Im hoping suffix will be a max of 255 (hence im allocating 3 extra characters + 1(NULL)
+        outFileLen = outFileLen + 4;
+        for (int i = 0 ; i < afl->NumberOfFiles ; i++)
+        {
+          char* number;
+          char FileNameBuf[outFileLen];
+          asprintf(&number, "%d", i);
+          strcat(strcpy(FileNameBuf,optarg), number);
+          if (i != 0)
+            (afl->fsrv.multi_out_file)[i] = ck_strdup(FileNameBuf);
+          else
+            (afl->fsrv.multi_out_file)[i] = optarg;
+        }
         afl->fsrv.use_stdin = 0;
         break;
 
@@ -807,6 +844,8 @@ int main(int argc, char **argv_orig, char **envp) {
 
         extras_dir[extras_dir_cnt++] = optarg;
         break;
+
+      //case 'b':
 
       case 't': {                                                /* timeout */
 

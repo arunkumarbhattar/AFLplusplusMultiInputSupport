@@ -766,6 +766,7 @@ typedef struct afl_state {
   u32   bitsmap_size;
 #endif
 
+  u32 NumberOfFiles;
 } afl_state_t;
 
 struct custom_mutator {

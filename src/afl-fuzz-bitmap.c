@@ -806,13 +806,23 @@ save_if_interesting(afl_state_t *afl, void *mem, u32 len, u8 fault) {
       return keeping;
 
   }
+  int MultiInputConcatenatedTestCaseLength = len;
+
+  if (afl->fsrv.isMultiInput)
+  {
+    int NoOfIps = afl->fsrv.NumOfFiles;
+    MultiInputConcatenatedTestCaseLength = 0;
+    while(NoOfIps--)
+    {
+      MultiInputConcatenatedTestCaseLength += (afl->fsrv.IpLenArray)[NoOfIps];
+    }
+  }
 
   /* If we're here, we apparently want to save the crash or hang
      test case, too. */
-
   fd = open(fn, O_WRONLY | O_CREAT | O_EXCL, DEFAULT_PERMISSION);
   if (unlikely(fd < 0)) { PFATAL("Unable to create '%s'", fn); }
-  ck_write(fd, mem, len, fn);
+  ck_write(fd, mem, MultiInputConcatenatedTestCaseLength, fn);
   close(fd);
 
 #ifdef __linux__
