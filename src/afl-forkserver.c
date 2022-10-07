@@ -92,6 +92,7 @@ void afl_fsrv_init(afl_forkserver_t *fsrv) {
   fsrv->dev_null_fd = -1;
   fsrv->dev_urandom_fd = -1;
   fsrv->NumOfFiles = 0;
+  fsrv->isMultiInput = false;
   /* Settings */
   fsrv->use_stdin = true;
   fsrv->no_unlink = false;
@@ -1312,33 +1313,33 @@ char** afl_fsrv_break_input(afl_forkserver_t *fsrv, char* str, int PartCount, in
   }
   return RetVal;
 }
-void ck_write_multi(s32* _fds, u8** bufs, s32 len, const s32* lens, u8** fns, s32 num) {
-    if (len <= 0)
-      return;
-    /* Repeat this block n times */
-    for (int FileCount = 0; FileCount < num; FileCount++) {
-      s32 _written = 0, _off = 0, _len = (s32)(lens[FileCount]);
-      do {
-        s32 _res = write(_fds[FileCount], (bufs)[FileCount] + _off, _len);
-        if (_res != _len && (_res > 0 && _written + _res != _len)) {
-          if (_res > 0) {
-            _written += _res;
-            _len -= _res;
-            _off += _res;
-          } else {
-            //RPFATAL(_res, "Short write to %s, fd %d (%d of %d bytes)",
-            //      fns[FileCount], _fds[FileCount], _res, _len);
-            assert(false);
-          }
-        } else {
-          break;
-        }
-      } while (1);
-    }
-
-//    while(num--)
-//      free(bufs[num]);
-}
+//void ck_write_multi(s32* _fds, u8** bufs, s32 len, const s32* lens, u8** fns, s32 num) {
+//    if (len <= 0)
+//      return;
+//    /* Repeat this block n times */
+//    for (int FileCount = 0; FileCount < num; FileCount++) {
+//      s32 _written = 0, _off = 0, _len = (s32)(lens[FileCount]);
+//      do {
+//        s32 _res = write(_fds[FileCount], (bufs)[FileCount] + _off, _len);
+//        if (_res != _len && (_res > 0 && _written + _res != _len)) {
+//          if (_res > 0) {
+//            _written += _res;
+//            _len -= _res;
+//            _off += _res;
+//          } else {
+//            //RPFATAL(_res, "Short write to %s, fd %d (%d of %d bytes)",
+//            //      fns[FileCount], _fds[FileCount], _res, _len);
+//            assert(false);
+//          }
+//        } else {
+//          break;
+//        }
+//      } while (1);
+//    }
+//
+////    while(num--)
+////      free(bufs[num]);
+//}
 
 /* Delete the current testcase and write the buf to the testcase file */
 

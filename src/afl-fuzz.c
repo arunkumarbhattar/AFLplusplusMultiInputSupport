@@ -845,8 +845,6 @@ int main(int argc, char **argv_orig, char **envp) {
         extras_dir[extras_dir_cnt++] = optarg;
         break;
 
-      //case 'b':
-
       case 't': {                                                /* timeout */
 
         u8 suffix = 0;

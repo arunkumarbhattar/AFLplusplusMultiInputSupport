@@ -94,7 +94,7 @@ typedef struct afl_forkserver {
       dev_null_fd,                      /* Persistent fd for /dev/null      */
       fsrv_ctl_fd,                      /* Fork server control pipe (write) */
       fsrv_st_fd;                       /* Fork server status pipe (read)   */
-  s32* out_fd_multi;                    /* Persistent fd fds for fsrv->multi_out_file*/
+  s32* out_fd_multi;                    /* Persistent FDs for Multi-IP Fuzzing*/
   u32 exec_tmout;                       /* Configurable exec timeout (ms)   */
   u32 init_tmout;                       /* Configurable init timeout (ms)   */
   u32 map_size;                         /* map size used by the target      */
@@ -106,11 +106,10 @@ typedef struct afl_forkserver {
 
   u8 *out_file,                         /* File to fuzz, if any             */
       *target_path;                     /* Path of the target               */
-  bool isMultiInput;
-  u32 NumOfFiles;                       /* -b count */
-  u8 **multi_out_file;                  /* If -b specified, this gon hold list
- * of files that gon be fuzzed*/
-  s32* IpLenArray; /*Length of Individual input file*/
+  bool isMultiInput;                    /* Flag for Multi-IP Fuzzing        */
+  u32 NumOfFiles;                       /* No Of Ips for Multi-IP Fuzzing   */
+  u8 **multi_out_file;                  /* Ip File names for Multi-IP Fuzzing */
+  s32* IpLenArray;                      /* Array Length per IP in Multi-IP F  */
   FILE *plot_file;                      /* Gnuplot output file              */
 
   /* Note: last_run_timed_out is u32 to send it to the child as 4 byte array */

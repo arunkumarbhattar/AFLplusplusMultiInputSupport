@@ -24,9 +24,6 @@
 #define _HAVE_DEBUG_H
 
 #include <errno.h>
-#include <unistd.h>
-#include <stdbool.h>
-#include <assert.h>
 
 #include "types.h"
 #include "config.h"
@@ -395,31 +392,32 @@ static inline const char *colorfilter(const char *x) {
                                                                               \
   } while (0)
 
-//void ck_write_multi(s32* _fds, u8** bufs, s32 len, const s32* lens, u8** fns, s32 num) {
-//  do {
-//    if (len <= 0) break;
-//    /* Repeat this block n times */
-//    for (int FileCount = 0; FileCount < num; FileCount++) {
-//      s32 _written = 0, _off = 0, _len = (s32)(lens[FileCount]);
-//      do {
-//        s32 _res = write(_fds[FileCount], (bufs)[FileCount] + _off, _len);
-//        if (_res != _len && (_res > 0 && _written + _res != _len)) {
-//          if (_res > 0) {
-//            _written += _res;
-//            _len -= _res;
-//            _off += _res;
-//          } else {
-//            //RPFATAL(_res, "Short write to %s, fd %d (%d of %d bytes)",
-//              //      fns[FileCount], _fds[FileCount], _res, _len);
-//            assert(false);
-//          }
-//        } else {
-//          break;
-//        }
-//      } while (1);
-//    }
-//  } while (0);
-//}
+#define ck_write_multi(_fds, bufs, len, lens, fns, num) {                     \
+  if (len <= 0)                                                               \
+    return;                                                                   \
+  /* Repeat this block n times */                                             \
+  for (int FileCount = 0; FileCount < num; FileCount++) {                     \
+    s32 _written = 0, _off = 0, _len = (s32)(lens[FileCount]);                \
+    do {                                                                      \
+      s32 _res = write(_fds[FileCount], (bufs)[FileCount] + _off, _len);      \
+      if (_res != _len && (_res > 0 && _written + _res != _len)) {            \
+        if (_res > 0) {                                                       \
+          _written += _res;                                                   \
+          _len -= _res;                                                       \
+          _off += _res;                                                       \
+        } else {                                                              \
+          RPFATAL(_res, "Short write to %s, fd %d (%d of %d bytes)",          \
+                fns[FileCount], _fds[FileCount], _res, _len);                 \
+          assert(false);                                                      \
+        }                                                                     \
+      } else {                                                                \
+        break;                                                                \
+      }                                                                       \
+    } while (1);                                                              \
+  }                                                                           \
+}
+
+
 
 #define ck_read(fd, buf, len, fn)                              \
   do {                                                         \
